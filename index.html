@@ -1,0 +1,1130 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence, useAnimate } from "framer-motion";
+import {
+  AlertTriangle,
+  Workflow,
+  BarChart3,
+  CheckCircle2,
+  Rocket,
+  ShieldCheck,
+  Layers,
+  Timer,
+  LineChart,
+  Clipboard,
+  Wand2,
+  Boxes,
+  Building2,
+  Info,
+  ArrowRight,
+  ArrowRightLeft,
+} from "lucide-react";
+import {
+  BarChart as RBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+/**
+ * Recast — Executive Click‑Through (V2)
+ * Five slides (Pain → Struggle → Shift → Calculator → Insight), white background, modern enterprise feel.
+ * Colors: blue/green neutrals, single orange accent for risk/savings highlights.
+ * Tech: TailwindCSS + Framer Motion + Recharts + Lucide icons. No external calls; illustrative math only.
+ * Analytics: events push to window.__recastAnalytics and console.
+ */
+
+// ----------------- Brand & Constants -----------------
+const BRAND = {
+  bg: "bg-white",
+  text: "text-slate-900",
+  subtext: "text-slate-600",
+  panel: "bg-white border border-slate-200",
+  chip: "bg-orange-500 text-white",
+  pillActive: "bg-orange-500 text-white",
+  pill: "text-slate-700 hover:bg-slate-100",
+};
+
+const DEFAULT_USERS = 5000;
+const DEFAULT_LOADED_COST = 85; // $/hr
+const UPDATES_PER_MONTH = 32; // illustrative
+const ZERO_DAY_TARGET_HOURS = 1.5; // 90 minutes
+const CRITICAL_UPDATES_PER_MONTH = 1; // illustrative
+
+// ----------------- Utilities -----------------
+function cx(...a: Array<string | false | null | undefined>) {
+  return a.filter(Boolean).join(" ");
+}
+function track(event: string, payload: Record<string, any> = {}) {
+  // @ts-ignore
+  window.__recastAnalytics = window.__recastAnalytics || [];
+  // @ts-ignore
+  window.__recastAnalytics.push({ ts: Date.now(), event, payload });
+  console.log("[analytics]", event, payload);
+}
+function round(n: number) {
+  return Math.round(n * 100) / 100;
+}
+function num(n: number) {
+  return new Intl.NumberFormat().format(Math.round(n));
+}
+
+// Simple count‑up/ticker that animates number changes
+function useCountUp(value: number) {
+  const [scope, animate] = useAnimate();
+  useEffect(() => {
+    const el = scope.current as HTMLElement | null;
+    if (!el) return;
+    const start = Number(el.dataset.value || 0);
+    const end = value;
+    const duration = 0.6;
+    const startTime = performance.now();
+    function step(now: number) {
+      const t = Math.min(1, (now - startTime) / (duration * 1000));
+      const eased = 1 - Math.pow(1 - t, 3);
+      const current = start + (end - start) * eased;
+      el.textContent = num(current);
+      if (t < 1) requestAnimationFrame(step);
+      else el.dataset.value = String(end);
+    }
+    requestAnimationFrame(step);
+  }, [value, scope]);
+  return scope;
+}
+
+// ----------------- Tabs -----------------
+const TABS = [
+  { id: "pain", label: "Set the Scene", icon: AlertTriangle },
+  { id: "struggle", label: "Show the Struggle", icon: BarChart3 },
+  { id: "shift", label: "Shift with Recast", icon: Wand2 },
+  { id: "calc", label: "Scale Outcome", icon: LineChart },
+  { id: "insight", label: "Spark Insight", icon: Rocket },
+] as const;
+
+type TabId = typeof TABS[number]["id"];
+
+// ----------------- Root Component -----------------
+export default function RecastExecutiveDemo() {
+  const [tab, setTab] = useState<TabId>("pain");
+
+  // Impact chips (top‑of‑page). Start null until user adds something.
+  const [chipImpact, setChipImpact] = useState<{
+    minutes: number | null;
+    pkgHours: number | null;
+    riskHrs: number | null;
+  }>({ minutes: null, pkgHours: null, riskHrs: null });
+
+  // Aggregate impact used by calculator; baseline keeps prior feel
+  const [roiImpact, setRoiImpact] = useState({ minutes: 9, pkgHours: 191.2, riskHrs: 0 });
+
+  useEffect(() => {
+    track("scene_viewed", { scene: tab });
+  }, [tab]);
+
+  // Sticky tally beside tabs — appears once anything has been added
+  const showSticky =
+    chipImpact.minutes !== null || chipImpact.pkgHours !== null || chipImpact.riskHrs !== null;
+  const tallyHours =
+    (chipImpact.minutes ? (chipImpact.minutes * DEFAULT_USERS) / 60 : 0) +
+    (chipImpact.pkgHours || 0) +
+    (chipImpact.riskHrs || 0);
+  const tallyDollars = tallyHours * DEFAULT_LOADED_COST;
+
+  return (
+    <div className={cx("min-h-screen", BRAND.bg, BRAND.text)}>
+      <Header />
+
+      <main className="mx-auto max-w-7xl px-4 pb-24">
+        <div className="flex items-center justify-between gap-3">
+          <Tabs active={tab} onChange={setTab} />
+          {showSticky && (
+            <button
+              onClick={() => setTab("calc")}
+              className={cx(
+                "sticky top-2 ml-auto inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+                BRAND.chip,
+                "focus-visible:ring-orange-300 focus-visible:ring-offset-white"
+              )}
+            >
+              Impact so far: {num(tallyHours)} hrs/mo → ${num(tallyDollars)} saved
+            </button>
+          )}
+        </div>
+
+        {/* Metric chips row */}
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <MetricChip
+            label="Minutes saved per user / month"
+            value={chipImpact.minutes}
+            tone="emerald"
+            formatter={(v) => String(Math.round(v))}
+          />
+          <MetricChip
+            label="Packaging hours avoided / month"
+            value={chipImpact.pkgHours}
+            tone="sky"
+            formatter={(v) => String(Math.round(v))}
+          />
+          <MetricChip
+            label="Zero-day exposure reduced / month"
+            value={chipImpact.riskHrs}
+            tone="orange"
+            formatter={(v) => String(Math.round(v))}
+          />
+        </div>
+
+        <AnimatePresence mode="wait">
+          {tab === "pain" && (
+            <motion.section
+              key="pain"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mt-8"
+            >
+              <Pain onAdvance={() => setTab("struggle")} />
+            </motion.section>
+          )}
+
+          {tab === "struggle" && (
+            <motion.section
+              key="struggle"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mt-8"
+            >
+              <Struggle onAdvance={() => setTab("shift")} />
+            </motion.section>
+          )}
+
+          {tab === "shift" && (
+            <motion.section
+              key="shift"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mt-8"
+            >
+              <Shift
+                chipImpact={chipImpact}
+                setChipImpact={setChipImpact}
+                onRoiImpact={(add) =>
+                  setRoiImpact((s) => ({
+                    minutes: s.minutes + (add.minutes || 0),
+                    pkgHours: s.pkgHours + (add.pkgHours || 0),
+                    riskHrs: s.riskHrs + (add.riskHrs || 0),
+                  }))
+                }
+                onAdvance={() => setTab("calc")}
+              />
+            </motion.section>
+          )}
+
+          {tab === "calc" && (
+            <motion.section
+              key="calc"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mt-8"
+            >
+              <Calculator impact={roiImpact} onAdvance={() => setTab("insight")} />
+            </motion.section>
+          )}
+
+          {tab === "insight" && (
+            <motion.section
+              key="insight"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mt-8"
+            >
+              <Insight />
+            </motion.section>
+          )}
+        </AnimatePresence>
+      </main>
+    </div>
+  );
+}
+
+// ----------------- Header -----------------
+function Header() {
+  return (
+    <header className="relative overflow-hidden">
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-br from-indigo-200/80 via-sky-100/70 to-emerald-100/70"
+      />
+      <div className="relative mx-auto max-w-7xl px-4 pt-12 pb-10">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+        >
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/60 px-3 py-1 text-xs tracking-wide text-slate-600">
+            Executive click‑through
+          </div>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
+            Keep apps current, secure, and ready—without packaging.
+          </h1>
+          <p className="mt-2 max-w-3xl text-slate-600">
+            Five short slides. Clear story: the pain, the struggle, how Recast shifts the model, and the business impact.
+          </p>
+        </motion.div>
+      </div>
+    </header>
+  );
+}
+
+// ----------------- Tabs -----------------
+function Tabs({
+  active,
+  onChange,
+}: {
+  active: TabId;
+  onChange: (t: TabId) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Demo sections"
+      className="flex w-full flex-wrap gap-2 rounded-full bg-slate-100 p-1 ring-1 ring-slate-200"
+    >
+      {TABS.map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          role="tab"
+          aria-selected={active === id}
+          aria-controls={`panel-${id}`}
+          id={`tab-${id}`}
+          onClick={() => {
+            onChange(id);
+            track("toggle_changed", { control: "tab", value: id });
+          }}
+          className={cx(
+            "group inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm sm:text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+            active === id
+              ? cx(BRAND.pillActive, "focus-visible:ring-orange-300 focus-visible:ring-offset-white")
+              : cx(BRAND.pill, "focus-visible:ring-slate-300 focus-visible:ring-offset-white")
+          )}
+        >
+          <Icon className="h-4 w-4" aria-hidden />
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MetricChip({
+  label,
+  value,
+  tone,
+  formatter,
+}: {
+  label: string;
+  value: number | null;
+  tone: "emerald" | "sky" | "orange";
+  formatter: (v: number) => string;
+}) {
+  const tones: Record<string, string> = {
+    emerald: "from-emerald-400/80 to-teal-400/80",
+    sky: "from-sky-400/80 to-indigo-400/80",
+    orange: "from-orange-400/90 to-amber-400/90",
+  };
+  const display = value === null ? "—" : formatter(value);
+  return (
+    <div className={cx("rounded-xl p-3", BRAND.panel)}>
+      <div className="text-xs text-slate-500">{label}</div>
+      <div
+        className={cx(
+          "mt-1 inline-flex items-center gap-2 rounded-full bg-gradient-to-r px-2.5 py-0.5 text-white",
+          tones[tone]
+        )}
+      >
+        <CheckCircle2 className="h-4 w-4" aria-hidden />
+        <span className="text-sm font-semibold">{display}</span>
+      </div>
+    </div>
+  );
+}
+
+// ----------------- Slide 1: Pain -----------------
+
+// Unified hub-and-spoke visualization (inspired by provided image)
+function UnifiedHubViz() {
+  const monitors = new Array(5).fill(0);
+  return (
+    <div className={cx("relative overflow-hidden rounded-2xl p-6", BRAND.panel)}>
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-white" />
+      <div className="relative h-80 w-full">
+        {/* Center hub with pulsing dotted rings */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          <div className="relative h-[320px] w-[320px]">
+            {/* colorful conic glow */}
+            <motion.div
+              className="absolute inset-0 rounded-full"
+              style={{ background: "conic-gradient(from 0deg, #60a5fa, #34d399, #f59e0b, #ef4444, #8b5cf6, #60a5fa)" }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+            />
+            <div className="absolute inset-2 rounded-full bg-white shadow-[inset_0_0_0_1px_#e5e7eb]" />
+            {/* subtle outer glow */}
+            <div className="absolute -inset-4 rounded-full bg-gradient-to-tr from-fuchsia-200/30 via-sky-200/30 to-emerald-200/30 blur-2xl" />
+
+            {/* dotted rings */}
+            <svg width="320" height="320" viewBox="0 0 320 320" className="relative">
+              {[70, 100, 130].map((r, i) => (
+                <motion.circle
+                  key={r}
+                  cx="160"
+                  cy="160"
+                  r={r}
+                  fill="none"
+                  stroke="#cbd5e1"
+                  strokeDasharray="3 8"
+                  initial={{ opacity: 0.5 }}
+                  animate={{ opacity: [0.5, 0.9, 0.5] }}
+                  transition={{ duration: 2.2 + i * 0.6, repeat: Infinity, ease: "easeInOut" }}
+                />
+              ))}
+              {/* inner soft ring */}
+              <defs>
+                <radialGradient id="hubSoft" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#ffffff" />
+                  <stop offset="100%" stopColor="#eef2ff" />
+                </radialGradient>
+              </defs>
+              <circle cx="160" cy="160" r="56" fill="url(#hubSoft)" stroke="#e5e7eb" />
+            </svg>
+
+            {/* colorful app dots on orbit */}
+            <motion.div
+              className="absolute inset-0"
+              style={{ transformOrigin: "50% 50%" }}
+              animate={{ rotate: -360 }}
+              transition={{ duration: 24, repeat: Infinity, ease: "linear" }}
+            >
+              {[
+                { x: "50%", y: "6%", bg: "bg-sky-500" },
+                { x: "12%", y: "40%", bg: "bg-emerald-500" },
+                { x: "88%", y: "42%", bg: "bg-fuchsia-500" },
+                { x: "22%", y: "78%", bg: "bg-amber-500" },
+                { x: "78%", y: "86%", bg: "bg-indigo-500" },
+              ].map((d, i) => (
+                <div
+                  key={i}
+                  className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full shadow ${d.bg}`}
+                  style={{ left: d.x, top: d.y }}
+                />
+              ))}
+            </motion.div>
+          </div>
+          <div className="absolute left-1/2 top-1/2 w-[180px] -translate-x-1/2 -translate-y-1/2 text-center">
+            <div className="text-xs font-semibold text-slate-600">Application Workspace</div>
+            <div className="text-[11px] text-slate-500">SaaS | Native | Virtual</div>
+          </div>
+        </div>
+
+        {/* Left: macOS */}
+        <div className="absolute left-3 top-1/2 -translate-y-1/2">
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 shadow">macOS</div>
+        </div>
+        {/* Right: Windows */}
+        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 shadow">Windows</div>
+        </div>
+        {/* Bottom: VDI row */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
+          <div className="mb-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 shadow">VDI</div>
+          <div className="flex items-center gap-2">
+            {monitors.map((_, i) => (
+              <div key={i} className="flex h-8 w-10 items-center justify-center rounded border border-slate-200 bg-white text-[10px] text-slate-600 shadow-sm">
+                VDI
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Flow arrows (animated) */}
+        <svg className="absolute inset-0" viewBox="0 0 800 400" preserveAspectRatio="none">
+          {/* left to hub */}
+          <motion.path
+            d="M120,200 L320,200"
+            stroke="#94a3b8"
+            strokeWidth="2"
+            fill="none"
+            strokeDasharray="6 10"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 1.6, ease: "easeOut" }}
+          />
+          {/* hub to right */}
+          <motion.path
+            d="M480,200 L680,200"
+            stroke="#94a3b8"
+            strokeWidth="2"
+            fill="none"
+            strokeDasharray="6 10"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 1.6, delay: 0.2, ease: "easeOut" }}
+          />
+          {/* hub to bottom */}
+          <motion.path
+            d="M400,240 L400,330"
+            stroke="#94a3b8"
+            strokeWidth="2"
+            fill="none"
+            strokeDasharray="6 10"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 1.6, delay: 0.4, ease: "easeOut" }}
+          />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// keep AppSprawlViz as an alternative if needed
+
+
+// Animated app-sprawl visualization (replaces static placeholder)
+function AppSprawlViz() {
+  const OrbitPill = ({ label, className }: { label: string; className: string }) => (
+    <div className={cx("absolute rounded-full bg-slate-200/70 px-3 py-1 text-xs text-slate-700 shadow-sm", className)}>
+      {label}
+    </div>
+  );
+  return (
+    <div className={cx("relative overflow-hidden rounded-2xl p-6", BRAND.panel)}>
+      <div className="absolute inset-0 bg-gradient-radial from-orange-50 via-white to-white" />
+      <div className="relative h-72 w-full">
+        {/* center */}
+        <div className="absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-100" />
+        {/* rotating orbit */}
+        <motion.div
+          className="absolute inset-0"
+          style={{ transformOrigin: "50% 50%" }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 18, ease: "linear", repeat: Infinity }}
+        >
+          <OrbitPill label="Teams" className="left-1/2 -translate-x-1/2 top-2" />
+          <OrbitPill label="Chrome" className="left-4 top-16" />
+          <OrbitPill label="Zoom" className="right-4 top-16" />
+          <OrbitPill label="SAP" className="left-6 bottom-12" />
+          <OrbitPill label="Figma" className="right-8 bottom-6" />
+        </motion.div>
+        {/* subtle counter-rotation for depth */}
+        <motion.div
+          className="absolute inset-6"
+          style={{ transformOrigin: "50% 50%" }}
+          animate={{ rotate: -360 }}
+          transition={{ duration: 28, ease: "linear", repeat: Infinity }}
+        >
+          <div className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full bg-orange-300/70" />
+          <div className="absolute left-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-sky-300/70" />
+          <div className="absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-emerald-300/70" />
+          <div className="absolute left-1/2 bottom-0 h-2 w-2 -translate-x-1/2 rounded-full bg-indigo-300/70" />
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
+const PROBLEMS = [
+  { key: "frag", title: "Fragmented delivery", sub: "Windows / Mac / VDI / Web — users guess the right way.", icon: Layers },
+  { key: "package", title: "Packaging backlog", sub: "Rebuild per version; updates stall.", icon: Boxes },
+  { key: "zeroday", title: "Zero‑day exposure", sub: "Patching takes days, not minutes.", icon: ShieldCheck },
+  { key: "migration", title: "Migration drag", sub: "Apps glued to images slow change.", icon: Building2 },
+];
+
+function Pain({ onAdvance }: { onAdvance: () => void }) {
+  return (
+    <section role="tabpanel" id="panel-pain" aria-labelledby="tab-pain">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Left: Animated app sprawl graphic */}
+        <UnifiedHubViz />
+
+        {/* Right: Bullets */}
+        <div className={cx("rounded-2xl p-6", BRAND.panel)}>
+          <div className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-orange-600">
+            <AlertTriangle className="h-4 w-4" /> The pain
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {PROBLEMS.map((p) => (
+              <motion.div
+                key={p.key}
+                whileHover={{ y: -2 }}
+                className="group flex h-full flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4"
+              >
+                <div className="flex items-center gap-2">
+                  <p.icon className="h-5 w-5 text-sky-500" aria-hidden />
+                  <h3 className="text-base font-semibold">{p.title}</h3>
+                </div>
+                <p className="text-sm text-slate-600">{p.sub}</p>
+                <div className="mt-auto h-1 rounded bg-gradient-to-r from-orange-400/70 to-rose-400/70 opacity-0 transition-opacity group-hover:opacity-100" />
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={() => onAdvance()}
+              className="inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white bg-orange-500"
+            >
+              Show the struggle <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ----------------- Slide 2: Struggle (chart) -----------------
+const STRUGGLE_DATA = [
+  { name: "Packaging hrs/mo", value: 120, range: "50–200" },
+  { name: "Zero‑day lag (hrs)", value: 36, range: "24–72" },
+  { name: "End‑user lost mins", value: 12, range: "5–20" },
+];
+
+function Struggle({ onAdvance }: { onAdvance: () => void }) {
+  return (
+    <section role="tabpanel" id="panel-struggle" aria-labelledby="tab-struggle" className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* Bar chart */}
+      <div className={cx("rounded-2xl p-6 lg:col-span-2", BRAND.panel)}>
+        <div className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <BarChart3 className="h-4 w-4" /> The struggle in numbers
+        </div>
+        <div className="h-72 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <RBarChart data={STRUGGLE_DATA} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" interval={0} tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip formatter={(v:any) => [v, "Value"]} />
+              {/* Orange for problem bars */}
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} />
+            </RBarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-slate-500 sm:grid-cols-3">
+          {STRUGGLE_DATA.map((d) => (
+            <div key={d.name} className="flex items-center justify-between rounded bg-slate-50 px-2 py-1">
+              <span>{d.name} (typical)</span>
+              <span className="font-medium text-slate-700">{d.range}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Icons/notes */}
+      <div className={cx("rounded-2xl p-6", BRAND.panel)}>
+        <ul className="space-y-3 text-sm text-slate-700">
+          <li className="flex items-center gap-2"><Timer className="h-4 w-4" /> Hours lost packaging and re‑packaging</li>
+          <li className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Risk windows widen while patches wait</li>
+          <li className="flex items-center gap-2"><Layers className="h-4 w-4" /> Siloed delivery paths confuse users</li>
+        </ul>
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={() => onAdvance()}
+            className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          >
+            Show the shift <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ----------------- Slide 3: Shift with Recast -----------------
+function Shift({
+  chipImpact,
+  setChipImpact,
+  onRoiImpact,
+  onAdvance,
+}: {
+  chipImpact: { minutes: number | null; pkgHours: number | null; riskHrs: number | null };
+  setChipImpact: (f: any) => void;
+  onRoiImpact: (add: Partial<{ minutes: number; pkgHours: number; riskHrs: number }>) => void;
+  onAdvance: () => void;
+}) {
+  // Smart routing context
+  const [ctx, setCtx] = useState({
+    location: "Local" as "Local" | "VPN" | "Home",
+    os: "Windows" as "Windows" | "Mac",
+    compliant: true,
+  });
+  const { route, reason } = useMemo(() => {
+    if (!ctx.compliant) return { route: "Web", reason: "Security policy: non‑compliant → Web" };
+    if (ctx.location === "Local" && ctx.os === "Windows") return { route: "Local", reason: "Fastest + compliant" };
+    if (ctx.location === "VPN") return { route: "Local", reason: "On network via VPN" };
+    if (ctx.location === "Home") return { route: "VDI", reason: "Off‑network → consistent VDI" };
+    return { route: "Web", reason: "Cross‑platform access" };
+  }, [ctx]);
+
+  // Configure‑don’t‑package & Zero‑day
+  const [packHrs, setPackHrs] = useState(8);
+  const [configHrs, setConfigHrs] = useState(2);
+  const deltaPerApp = Math.max(0, packHrs - configHrs);
+  const monthlyPkgHours = deltaPerApp * UPDATES_PER_MONTH; // hrs / month
+
+  const [currentHrs, setCurrentHrs] = useState(24);
+  const reduced = Math.max(0, (currentHrs - ZERO_DAY_TARGET_HOURS) * CRITICAL_UPDATES_PER_MONTH);
+
+  function addMinutes() {
+    const add = 2; // minutes per user (illustrative)
+    setChipImpact((s: any) => ({ ...s, minutes: Math.round((s.minutes ?? 0) + add) }));
+    onRoiImpact({ minutes: add });
+    track("toggle_changed", { control: "route_add_minutes", add });
+  }
+  function addPackaging() {
+    setChipImpact((s: any) => ({ ...s, pkgHours: Math.round((s.pkgHours ?? 0) + monthlyPkgHours) }));
+    onRoiImpact({ pkgHours: monthlyPkgHours });
+    track("toggle_changed", { control: "adopt_version", monthlyPkgHours });
+  }
+  function addZeroDay() {
+    setChipImpact((s: any) => ({ ...s, riskHrs: Math.round((s.riskHrs ?? 0) + reduced) }));
+    onRoiImpact({ riskHrs: reduced });
+    track("toggle_changed", { control: "zero_day_reduction", reduced });
+  }
+
+  return (
+    <section role="tabpanel" id="panel-shift" aria-labelledby="tab-shift" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* Old vs New */}
+      <div className={cx("rounded-2xl p-5", BRAND.panel)}>
+        <h3 className="text-lg font-semibold">Old Way vs. Recast Way</h3>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div className="mb-1 inline-flex items-center gap-2 text-slate-700"><ArrowRightLeft className="h-4 w-4" /> Old Way</div>
+            <ul className="space-y-1.5 text-slate-700">
+              <li>Package → Re‑package per version</li>
+              <li>Delivery silos (Local / VDI / Web)</li>
+              <li>Zero‑day: hours → days</li>
+            </ul>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+            <div className="mb-1 inline-flex items-center gap-2 text-emerald-700"><Wand2 className="h-4 w-4" /> Recast Way</div>
+            <ul className="space-y-1.5 text-emerald-700">
+              <li>Configure once; adopt by ring</li>
+              <li>One icon; right experience automatically</li>
+              <li>Zero‑day in minutes</li>
+            </ul>
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-slate-500">Animation idea: wipe to transition from cluttered flow to clean flow.</div>
+      </div>
+
+      {/* Smart Icon + Savings */}
+      <div className={cx("rounded-2xl p-5", BRAND.panel)}>
+        <h3 className="text-lg font-semibold">One icon. Right experience.</h3>
+        <p className="mt-1 text-sm text-slate-600">Users click once. Workspace picks the best route automatically.</p>
+
+        <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+          <Group label="Location" options={["Local", "VPN", "Home"]} value={ctx.location} onChange={(v) => setCtx((s) => ({ ...s, location: v as any }))} />
+          <Group label="OS" options={["Windows", "Mac"]} value={ctx.os} onChange={(v) => setCtx((s) => ({ ...s, os: v as any }))} />
+          <Group
+            label="Posture"
+            options={["Compliant", "Non‑compliant"]}
+            value={ctx.compliant ? "Compliant" : "Non‑compliant"}
+            onChange={(v) => setCtx((s) => ({ ...s, compliant: v === "Compliant" }))}
+          />
+        </div>
+
+        <div className="mt-4 text-sm text-slate-600">Recommended route:</div>
+        <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-orange-500 px-3 py-1 text-white">
+          <CheckCircle2 className="h-4 w-4" aria-hidden /> {route}
+        </div>
+        <div className="mt-1 text-xs text-slate-500">{reason}</div>
+        <div className="mt-3">
+          <button
+            onClick={addMinutes}
+            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs hover:bg-slate-100"
+          >
+            Add to impact
+          </button>
+        </div>
+      </div>
+
+      {/* Configure & Zero‑day */}
+      <div className={cx("rounded-2xl p-5 lg:col-span-2", BRAND.panel)}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* Configure card */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div className="font-medium">Configure—don’t package</div>
+            <label className="mt-2 flex flex-col gap-1">
+              <span className="text-xs text-slate-500">Hours per package → configure</span>
+              <div className="flex items-center gap-2">
+                <input
+                  className="w-20 rounded bg-white px-2 py-1 shadow-inner"
+                  value={packHrs}
+                  onChange={(e) => setPackHrs(parseInt(e.target.value || "0"))}
+                />
+                <span>→</span>
+                <input
+                  className="w-20 rounded bg-white px-2 py-1 shadow-inner"
+                  value={configHrs}
+                  onChange={(e) => setConfigHrs(parseInt(e.target.value || "0"))}
+                />
+              </div>
+            </label>
+            <div className="mt-2">{deltaPerApp} hrs saved per app.</div>
+            <div className="mt-2 flex items-center justify-between rounded bg-white px-3 py-2">
+              <span>Packaging hours avoided / mo</span>
+              <strong>{Math.round(monthlyPkgHours)}</strong>
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">Assumes ~{UPDATES_PER_MONTH} curated updates/month (illustrative).</div>
+            <button onClick={addPackaging} className="mt-2 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+              Add to impact
+            </button>
+          </div>
+
+          {/* Zero‑day card */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+            <div className="flex items-center gap-2 font-medium">
+              <ShieldCheck className="h-4 w-4" aria-hidden /> Zero‑day rollout
+            </div>
+            <label className="mt-2 flex flex-col gap-1">
+              <span className="text-xs text-slate-500">Current time‑to‑deploy (hrs)</span>
+              <input
+                className="w-24 rounded bg-white px-2 py-1 shadow-inner"
+                value={currentHrs}
+                onChange={(e) => setCurrentHrs(parseFloat(e.target.value || "0"))}
+              />
+            </label>
+            <div
+              className="mt-2 flex items-center justify-between rounded bg-white px-3 py-2"
+              title="Formula: (Current TtD − New TtD) × critical updates / month"
+            >
+              <span className="inline-flex items-center gap-1">
+                Exposure window reduced <Info className="h-3.5 w-3.5 opacity-70" aria-hidden />
+              </span>
+              <strong>{round(reduced)} hrs</strong>
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              New TtD target: {ZERO_DAY_TARGET_HOURS} hrs; critical updates/month: {CRITICAL_UPDATES_PER_MONTH} (illustrative).
+            </div>
+            <button onClick={addZeroDay} className="mt-2 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+              Add to impact
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            onClick={() => onAdvance()}
+            className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          >
+            See Calculator <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Group({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => (
+          <button
+            key={o}
+            onClick={() => onChange(o)}
+            className={cx(
+              "rounded-full px-3 py-1 text-sm border",
+              value === o ? "bg-orange-500 text-white border-orange-500" : "bg-white text-slate-700 hover:bg-slate-100 border-slate-200"
+            )}
+          >
+            {o}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ----------------- Slide 4: Calculator -----------------
+function Calculator({
+  impact,
+  onAdvance,
+}: {
+  impact: { minutes: number; pkgHours: number; riskHrs: number };
+  onAdvance: () => void;
+}) {
+  const [inputs, setInputs] = useState({
+    users: DEFAULT_USERS,
+    ticketsPerUserPerMonth: 0.035, // 35/1000 endpoints
+    avgHandleMins: 18,
+    loadedCostPerHour: DEFAULT_LOADED_COST,
+    recastAnnualCost: 120000,
+    includeSupportHours: false, // If true, adds ticket handle time into hours saved
+  });
+
+  const outputs = useMemo(() => {
+    const ticketsMonth = inputs.users * inputs.ticketsPerUserPerMonth;
+    const supportHours = (ticketsMonth * inputs.avgHandleMins) / 60; // optional context
+    const hoursFromMinutes = (impact.minutes * inputs.users) / 60; // per‑user minutes × users
+    const totalHoursSavedMonth =
+      hoursFromMinutes + impact.pkgHours + impact.riskHrs + (inputs.includeSupportHours ? supportHours : 0);
+    const dollarSavedMonth = totalHoursSavedMonth * inputs.loadedCostPerHour;
+    const dollarSavedYear = dollarSavedMonth * 12;
+    const netBenefitYear = dollarSavedYear - inputs.recastAnnualCost;
+    const roiPct = inputs.recastAnnualCost ? (netBenefitYear / inputs.recastAnnualCost) * 100 : 0;
+    return { ticketsMonth, supportHours, totalHoursSavedMonth, dollarSavedMonth, dollarSavedYear, netBenefitYear, roiPct };
+  }, [inputs, impact]);
+
+  function set<K extends keyof typeof inputs>(k: K, v: any) {
+    setInputs((s) => ({ ...s, [k]: v }));
+  }
+  function reset() {
+    setInputs({
+      users: DEFAULT_USERS,
+      ticketsPerUserPerMonth: 0.035,
+      avgHandleMins: 18,
+      loadedCostPerHour: DEFAULT_LOADED_COST,
+      recastAnnualCost: 120000,
+      includeSupportHours: false,
+    });
+    track("cta_clicked", { cta: "reset_defaults" });
+  }
+
+  // Animated KPIs
+  const kpiHoursRef = useCountUp(round(outputs.totalHoursSavedMonth));
+  const kpiYearRef = useCountUp(outputs.dollarSavedYear);
+  const kpiRoiRef = useCountUp(round(outputs.roiPct));
+  const kpiTixRef = useCountUp(outputs.ticketsMonth);
+
+  return (
+    <section role="tabpanel" id="panel-calc" aria-labelledby="tab-calc" className="space-y-6">
+      {/* KPI band */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi icon={Timer} label="Hours saved / mo" valueRef={kpiHoursRef} hint="Per‑user minutes × users + packaging + zero‑day" suffix="" />
+        <Kpi icon={LineChart} label="$ saved / yr" valueRef={kpiYearRef} prefix="$" hint="Illustrative only" />
+        <Kpi icon={BarChart3} label="ROI" valueRef={kpiRoiRef} suffix="%" hint="Net of subscription" />
+        <Kpi icon={Rocket} label="Tickets / mo" valueRef={kpiTixRef} hint="Scale context" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Assumptions */}
+        <div className={cx("rounded-2xl p-5 lg:col-span-2", BRAND.panel)}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Assumptions (edit)</h3>
+            <button onClick={reset} className="text-sm text-slate-600 hover:underline">Reset to defaults</button>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Num label="# users" value={inputs.users} onChange={(v) => set("users", v)} />
+            <Num label="Tickets per user / mo" value={inputs.ticketsPerUserPerMonth} onChange={(v) => set("ticketsPerUserPerMonth", v)} />
+            <Num label="Avg handle (mins)" value={inputs.avgHandleMins} onChange={(v) => set("avgHandleMins", v)} />
+            <Num label="Loaded cost ($/hr)" value={inputs.loadedCostPerHour} onChange={(v) => set("loadedCostPerHour", v)} />
+            <Num label="Recast annual cost ($)" value={inputs.recastAnnualCost} onChange={(v) => set("recastAnnualCost", v)} />
+          </div>
+          <label className="mt-4 inline-flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={inputs.includeSupportHours}
+              onChange={(e) => set("includeSupportHours", e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Include support ticket handle time in hours saved
+          </label>
+          <div className="mt-2 text-xs text-slate-500">
+            All values are examples. Replace with your data for accurate estimates.
+          </div>
+        </div>
+
+        {/* Results + copy */}
+        <div className={cx("rounded-2xl p-5", BRAND.panel)}>
+          <h3 className="text-lg font-semibold">Results</h3>
+          <div className="mt-3 space-y-2 text-sm">
+            <KV label="Hours saved / month" value={round(outputs.totalHoursSavedMonth)} />
+            <KV label="$ saved / month" value={`$${num(outputs.dollarSavedMonth)}`} />
+            <KV label="$ saved / year" value={`$${num(outputs.dollarSavedYear)}`} />
+            <KV label="Net benefit / year" value={`$${num(outputs.netBenefitYear)}`} accent />
+            <KV label="ROI" value={`${round(outputs.roiPct)}%`} />
+            <KV label="Tickets / month (context)" value={num(outputs.ticketsMonth)} />
+            {inputs.includeSupportHours && (
+              <KV label="Support hours (included)" value={round(outputs.supportHours)} />
+            )}
+          </div>
+          <CopyOnePager inputs={inputs} outputs={outputs} impact={impact} />
+          <button
+            onClick={() => onAdvance()}
+            className="mt-4 inline-flex items-center gap-2 rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          >
+            Next: Spark Insight <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500">
+        Transparency: Recast AW complements device management (e.g., Intune). Windows/macOS focus. Metrics are illustrative; actuals vary.
+      </div>
+    </section>
+  );
+}
+
+function Kpi({ icon: Icon, label, valueRef, hint, prefix = "", suffix = "" }: {
+  icon: any;
+  label: string;
+  valueRef: React.RefObject<HTMLDivElement>;
+  hint?: string;
+  prefix?: string;
+  suffix?: string;
+}) {
+  return (
+    <div className={cx("rounded-2xl p-4", BRAND.panel)}>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs text-slate-500">{label}</div>
+          <div className="text-xl font-semibold">
+            {prefix}
+            <span ref={valueRef as any} data-value="0" />
+            {suffix}
+          </div>
+        </div>
+        <Icon className="h-5 w-5 text-orange-500" aria-hidden />
+      </div>
+      {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
+    </div>
+  );
+}
+
+function Num({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs text-slate-600">{label}</span>
+      <input
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value.replace(/[^0-9.\-]/g, "")))}
+        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+      />
+    </label>
+  );
+}
+
+function KV({ label, value, accent = false }: { label: string; value: string | number; accent?: boolean }) {
+  return (
+    <div
+      className={cx(
+        "flex items-center justify-between rounded-lg px-3 py-2",
+        accent ? "bg-orange-50" : "bg-slate-50"
+      )}
+    >
+      <span className="text-slate-600">{label}</span>
+      <span className={cx("font-semibold", accent ? "text-orange-700" : "text-slate-900")}>{value}</span>
+    </div>
+  );
+}
+
+function CopyOnePager({
+  inputs,
+  outputs,
+  impact,
+}: {
+  inputs: any;
+  outputs: any;
+  impact: { minutes: number; pkgHours: number; riskHrs: number };
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    const body = `Recast Application Workspace — Executive One‑Pager (Per‑User Model)\n\nAssumptions\n - Users: ${inputs.users}\n - Tickets per user / month: ${inputs.ticketsPerUserPerMonth}\n - Avg handle: ${inputs.avgHandleMins} mins\n - Loaded cost: $${inputs.loadedCostPerHour}/hr\n - Subscription (annual): $${inputs.recastAnnualCost}\n\nObserved demo impact (illustrative)\n - Minutes saved per user (monthly): ${impact.minutes}\n - Packaging hours avoided (org / mo): ${impact.pkgHours}\n - Zero‑day exposure reduced (hrs / mo): ${impact.riskHrs}\n\nCalculated outcomes\n - Tickets / month: ${num(outputs.ticketsMonth)}\n - Hours saved / month: ${round(outputs.totalHoursSavedMonth)}\n - $ saved / month: $${num(outputs.dollarSavedMonth)}\n - $ saved / year: $${num(outputs.dollarSavedYear)}\n - Net benefit / year: $${num(outputs.netBenefitYear)}\n - ROI: ${round(outputs.roiPct)}%\n\nNotes: All values are examples; replace with your data for accurate estimates.`;
+    try {
+      await navigator.clipboard.writeText(body);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = body;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+    track("cta_clicked", { cta: "copy_onepager" });
+  }
+  return (
+    <button
+      onClick={copy}
+      className="mt-4 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+    >
+      <Clipboard className="h-4 w-4" aria-hidden /> {copied ? "Copied!" : "Copy executive one‑pager"}
+    </button>
+  );
+}
+
+// ----------------- Slide 5: Insight -----------------
+function Insight() {
+  return (
+    <section role="tabpanel" id="panel-insight" aria-labelledby="tab-insight">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+        <div className="lg:col-span-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <InsightCard icon={Timer} title="Save Time" body="Hours back to IT and end‑users." />
+          <InsightCard icon={Workflow} title="Empower Users" body="One icon; the right experience." />
+          <InsightCard icon={ShieldCheck} title="Reduce Risk" body="Zero‑day in minutes with rings." />
+        </div>
+        <div className={cx("rounded-2xl p-6 flex flex-col justify-between", BRAND.panel)}>
+          <div>
+            <h3 className="text-lg font-semibold">Run this with your numbers</h3>
+            <p className="mt-1 text-sm text-slate-600">We’ll plug in your app mix, update cadence, and security posture.</p>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                track("cta_clicked", { cta: "schedule_deeper" });
+                alert("Pretend scheduling link — wire to real form or calendar.");
+              }}
+              className="inline-flex items-center justify-center rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-105"
+            >
+              Schedule a walkthrough
+            </a>
+            <a
+              href="#calc"
+              onClick={(e) => {
+                e.preventDefault();
+                track("cta_clicked", { cta: "rerun_calc" });
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
+            >
+              Re‑run calculator
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function InsightCard({ icon: Icon, title, body }: { icon: any; title: string; body: string }) {
+  return (
+    <div className={cx("rounded-2xl p-6", BRAND.panel)}>
+      <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+        <Icon className="h-4 w-4 text-emerald-600" aria-hidden /> {title}
+      </div>
+      <div className="mt-1 text-sm text-slate-600">{body}</div>
+    </div>
+  );
+}
